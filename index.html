@@ -77,8 +77,8 @@
     </div>
     
     <!-- Load html5-qrcode library for scanning (Static load) 
-         Changed from 2.3.9/html5-qrcode.min.js to 2.3.10/minified/html5-qrcode.min.js to fix CDN 404 error -->
-    <script src="https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js"></script>
+         Changed to a stable version (2.3.8) hosted on cdnjs to fix the UNPKG 404 error. -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 
     <script> 
         // 🚨 IMPORTANT: REPLACE THIS PLACEHOLDER WITH YOUR GOOGLE APPS SCRIPT WEB APP URL
@@ -230,7 +230,7 @@
                     return;
                 }
                 retryCount++;
-                log(`Attempt ${retryCount}: Library not yet available. Retrying in 100ms...`, true);
+                log(`Attempt ${retryCount}: Library not yet available. Retrying in 100ms...`);
                 // Retrying aggressively at 100ms to catch the moment the script is executed
                 setTimeout(initializeScanner, 100); 
                 return;
@@ -264,8 +264,8 @@
                     onScanSuccess, 
                     (errorMessage) => { 
                         // The library failed to start the camera.
+                        // Log a warning, but don't stop the app completely as the user might grant permissions late
                         log(`Camera render error: ${errorMessage}`, true); 
-                        updateStatusUI('❌', 'Camera Failed to Start', 'Check system permissions and try refreshing the page.', 'bg-red-100', 'text-red-700');
                     }
                 );
                 log("QR Code Scanner started rendering.");
