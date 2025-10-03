@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -32,18 +31,13 @@
         <h1 class="text-3xl font-extrabold text-center text-gray-800 mb-6">Event Check-In (Sheet Mode)</h1>
         <p class="text-center text-gray-500 mb-8">Scan the QR code. Data is verified and recorded directly to your Google Sheet.</p>
 
-        <!-- CAMERA ACCESS WARNING AND SOLUTION -->
+        <!-- CAMERA ACCESS WARNING AND SOLUTION - Kept for reference -->
         <div id="camera-warning-box" class="mb-6 p-4 border border-red-400 bg-red-50 rounded-lg shadow-md text-sm text-red-800">
             <p class="font-bold mb-1 flex items-center">
                 <svg class="w-5 h-5 mr-2 text-red-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
-                Camera Blocked by Host Site
+                Camera Troubleshooting
             </p>
-            <p>If the camera does not turn on, it is likely being blocked by the host website's security (iFrame restriction).</p>
-            <p class="mt-2 font-semibold">
-                To fix this, please open the app directly in a new window:
-                <!-- This JavaScript opens the current page URL in a new window, bypassing the iFrame restrictions -->
-                <a href="javascript:void(0)" onclick="window.open(window.location.href, '_blank')" class="text-red-600 underline hover:text-red-800 ml-1">Click here to open the Scanner in a new tab</a>
-            </p>
+            <p>If the camera remains blocked on an iPad, please ensure you are using the **public GitHub Pages URL** (not an embedded link) and that you have granted Camera permission to Safari/Chrome in the iPad's system settings.</p>
         </div>
         
         <!-- Session Selector and Status -->
@@ -85,7 +79,6 @@
     <!-- Load html5-qrcode library for scanning -->
     <script src="https://unpkg.com/html5-qrcode@2.3.9/html5-qrcode.min.js"></script>
 
-    <!-- Changed from type="module" to standard script -->
     <script> 
         // 🚨 IMPORTANT: REPLACE THIS PLACEHOLDER WITH YOUR GOOGLE APPS SCRIPT WEB APP URL
         const GAS_WEB_APP_URL = "https://script.google.com/a/macros/skhtst.edu.hk/s/AKfycbxxdWQotBCXW0wLAL_5Rkx7RlfgmHZbnpdubZXLP19w9SNJTUPa3zEtCNNDe9ljZo20/exec"; 
@@ -106,6 +99,10 @@
             { value: '12:00 PM', label: 'Noon Session (12:00 PM)' },
             { value: '1:00 PM', label: 'Early-Afternoon Session (1:00 PM)' },
         ];
+        
+        // State for managing initialization retries
+        let retryCount = 0;
+        const MAX_RETRIES = 5;
 
         // --- UTILITY FUNCTIONS ---
 
@@ -130,11 +127,6 @@
         
         /**
          * Updates the UI to show the scanning result.
-         * @param {string} iconEmoji The emoji to display (e.g., '✅', '❌', '⚠️').
-         * @param {string} message The primary message.
-         * @param {string} details Secondary details about the participant.
-         * @param {string} bgColor Tailwind background class.
-         * @param {string} textColor Tailwind text color class.
          */
         function updateStatusUI(iconEmoji, message, details = '', bgColor = 'bg-gray-50', textColor = 'text-gray-600') {
             statusContainer.className = `p-5 w-full rounded-lg border text-center transition-all duration-300 ${bgColor} ${textColor}`;
@@ -147,7 +139,6 @@
 
         /**
          * Handles the successful scan of a QR code by calling the Apps Script Web App.
-         * @param {string} decodedText The text encoded in the QR code (participant email).
          */
         async function onScanSuccess(decodedText) {
             // Stop scanning immediately to prevent rapid re-scans
@@ -227,21 +218,22 @@
         }
         
         /**
-         * Initializes and starts the QR code scanner.
+         * Starts the QR code scanner after a delay.
          */
-        function initializeScanner() {
+        function startScanner() {
             // Populate session options
             sessionSelect.innerHTML = SESSIONS.map(s => 
                 `<option value="${s.value}">${s.label}</option>`
             ).join('');
 
             // Set initial status
-            updateStatusUI('🔄', 'Ready to Scan', 'Select the session above and point the camera at the QR code.', 'bg-gray-100', 'text-gray-600');
+            updateStatusUI('🔄', 'Initializing Camera...', 'Please wait for camera access prompt.', 'bg-gray-100', 'text-gray-600');
 
             const config = { 
                 fps: 10, 
                 qrbox: { width: 250, height: 250 }, 
-                disableFlip: false 
+                // Setting facingMode to environment (rear camera) helps in mobile environments
+                facingMode: "environment" 
             };
             
             // The html5-qrcode library is loaded via script tag and uses the 'reader' div
@@ -256,5 +248,36 @@
                 }
             );
 
-            log("QR Code Scanner initialized and started.");
+            log("QR Code Scanner started rendering.");
         }
+
+
+        /**
+         * Initializes and starts the QR code scanner with robust loading checks.
+         */
+        function initializeScanner() {
+            // Check if the library is loaded. If not, wait and try again.
+            if (typeof Html5QrcodeScanner === 'undefined') {
+                if (retryCount >= MAX_RETRIES) {
+                    log("FATAL: HTML5-QR Code library failed to load after multiple attempts.", true);
+                    updateStatusUI('🚨', 'Initialization Failed', 'Scanner library could not load.', 'bg-red-100', 'text-red-700');
+                    return;
+                }
+                retryCount++;
+                log(`Attempt ${retryCount}: Library not yet available. Retrying in 500ms...`, true);
+                setTimeout(initializeScanner, 500); 
+                return;
+            }
+            
+            // *** CRITICAL IOS/IPADOS FIX: DELAYED START ***
+            // Even when the library is defined, we wait 500ms to ensure the browser has fully rendered the DOM and is ready for media capture, improving success rate on mobile devices.
+            log("Library loaded. Starting camera initialization after 500ms delay...");
+            setTimeout(startScanner, 500);
+        }
+
+        // --- START APPLICATION ---
+        window.onload = initializeScanner;
+
+    </script>
+</body>
+</html>
