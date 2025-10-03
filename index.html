@@ -76,8 +76,7 @@
 
     </div>
     
-    <!-- Load html5-qrcode library for scanning -->
-    <script src="https://unpkg.com/html5-qrcode@2.3.9/html5-qrcode.min.js"></script>
+    <!-- Removed static script load for html5-qrcode.min.js -->
 
     <script> 
         // 🚨 IMPORTANT: REPLACE THIS PLACEHOLDER WITH YOUR GOOGLE APPS SCRIPT WEB APP URL
@@ -100,10 +99,6 @@
             { value: '1:00 PM', label: 'Early-Afternoon Session (1:00 PM)' },
         ];
         
-        // State for managing initialization retries
-        let retryCount = 0;
-        const MAX_RETRIES = 5;
-
         // --- UTILITY FUNCTIONS ---
 
         function log(message, isError = false) {
@@ -133,6 +128,22 @@
             statusIcon.innerHTML = `<span role="img" aria-label="Status">${iconEmoji}</span>`;
             statusMessage.textContent = message;
             participantDetails.textContent = details;
+        }
+
+        /**
+         * Dynamically loads an external script and executes a callback upon completion.
+         * This guarantees the script is available before we try to use it.
+         */
+        function loadScript(url, callback) {
+            const script = document.createElement('script');
+            script.src = url;
+            script.onload = callback;
+            script.onerror = () => {
+                log(`Error loading script: ${url}`, true);
+                updateStatusUI('🚨', 'Library Load Error', 'Could not load QR scanner library.', 'bg-red-100', 'text-red-700');
+            };
+            document.head.appendChild(script);
+            log(`Attempting to load script: ${url}`);
         }
         
         // --- CORE SCANNING LOGIC ---
@@ -218,7 +229,7 @@
         }
         
         /**
-         * Starts the QR code scanner after a delay.
+         * Starts the QR code scanner. This is called *only* after the external library has loaded.
          */
         function startScanner() {
             // Populate session options
@@ -236,47 +247,39 @@
                 facingMode: "environment" 
             };
             
-            // The html5-qrcode library is loaded via script tag and uses the 'reader' div
+            // The library is now guaranteed to be loaded
             window.html5QrcodeScanner = new Html5QrcodeScanner("reader", config, true);
             
-            // html5QrcodeScanner.render is the main function to start scanning
-            window.html5QrcodeScanner.render(
-                onScanSuccess, 
-                (errorMessage) => { 
-                    // Optional: handle scan errors, often too verbose for UI
-                    // log(`Scan error: ${errorMessage}`); 
-                }
-            );
-
-            log("QR Code Scanner started rendering.");
+            // CRITICAL IOS/IPADOS FIX: Use a mandatory 500ms delay before rendering 
+            // to allow the browser time to prepare the video element/permissions.
+            log("Library loaded. Starting camera initialization after 500ms delay...");
+            setTimeout(() => {
+                window.html5QrcodeScanner.render(
+                    onScanSuccess, 
+                    (errorMessage) => { 
+                        // Optional: handle scan errors, often too verbose for UI
+                        // log(`Scan error: ${errorMessage}`); 
+                    }
+                );
+                log("QR Code Scanner started rendering.");
+            }, 500); 
         }
 
 
         /**
-         * Initializes and starts the QR code scanner with robust loading checks.
+         * Main function executed when the page DOM is ready.
+         * It initiates the dynamic loading of the QR library.
          */
-        function initializeScanner() {
-            // Check if the library is loaded. If not, wait and try again.
-            if (typeof Html5QrcodeScanner === 'undefined') {
-                if (retryCount >= MAX_RETRIES) {
-                    log("FATAL: HTML5-QR Code library failed to load after multiple attempts.", true);
-                    updateStatusUI('🚨', 'Initialization Failed', 'Scanner library could not load.', 'bg-red-100', 'text-red-700');
-                    return;
-                }
-                retryCount++;
-                log(`Attempt ${retryCount}: Library not yet available. Retrying in 500ms...`, true);
-                setTimeout(initializeScanner, 500); 
-                return;
-            }
-            
-            // *** CRITICAL IOS/IPADOS FIX: DELAYED START ***
-            // Even when the library is defined, we wait 500ms to ensure the browser has fully rendered the DOM and is ready for media capture, improving success rate on mobile devices.
-            log("Library loaded. Starting camera initialization after 500ms delay...");
-            setTimeout(startScanner, 500);
+        function initializeApp() {
+            // Load the external library first, then run startScanner as the success callback
+            const QR_LIBRARY_URL = "https://unpkg.com/html5-qrcode@2.3.9/html5-qrcode.min.js";
+            log("DOM ready. Initiating dynamic script load.");
+            loadScript(QR_LIBRARY_URL, startScanner);
         }
 
         // --- START APPLICATION ---
-        window.onload = initializeScanner;
+        // The main entry point now calls the loader function instead of checking definitions.
+        window.onload = initializeApp;
 
     </script>
 </body>
