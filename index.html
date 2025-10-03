@@ -76,7 +76,9 @@
 
     </div>
     
-    <!-- Removed static script load for html5-qrcode.min.js -->
+    <!-- Load html5-qrcode library for scanning (Static load) 
+         Changed from 2.3.9/html5-qrcode.min.js to 2.3.10/minified/html5-qrcode.min.js to fix CDN 404 error -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.10/minified/html5-qrcode.min.js"></script>
 
     <script> 
         // 🚨 IMPORTANT: REPLACE THIS PLACEHOLDER WITH YOUR GOOGLE APPS SCRIPT WEB APP URL
@@ -99,6 +101,10 @@
             { value: '1:00 PM', label: 'Early-Afternoon Session (1:00 PM)' },
         ];
         
+        // State for managing initialization retries
+        let retryCount = 0;
+        const MAX_RETRIES = 30; // 30 retries * 100ms = 3 seconds wait max
+
         // --- UTILITY FUNCTIONS ---
 
         function log(message, isError = false) {
@@ -128,22 +134,6 @@
             statusIcon.innerHTML = `<span role="img" aria-label="Status">${iconEmoji}</span>`;
             statusMessage.textContent = message;
             participantDetails.textContent = details;
-        }
-
-        /**
-         * Dynamically loads an external script and executes a callback upon completion.
-         * This guarantees the script is available before we try to use it.
-         */
-        function loadScript(url, callback) {
-            const script = document.createElement('script');
-            script.src = url;
-            script.onload = callback;
-            script.onerror = () => {
-                log(`Error loading script: ${url}`, true);
-                updateStatusUI('🚨', 'Library Load Error', 'Could not load QR scanner library.', 'bg-red-100', 'text-red-700');
-            };
-            document.head.appendChild(script);
-            log(`Attempting to load script: ${url}`);
         }
         
         // --- CORE SCANNING LOGIC ---
@@ -229,10 +219,26 @@
         }
         
         /**
-         * Starts the QR code scanner. This is called *only* after the external library has loaded.
+         * Initializes and starts the QR code scanner with robust polling checks.
          */
-        function startScanner() {
-            // Populate session options
+        function initializeScanner() {
+            // Check if the library is loaded. If not, wait and try again (Polling).
+            if (typeof Html5QrcodeScanner === 'undefined') {
+                if (retryCount >= MAX_RETRIES) {
+                    log("FATAL: HTML5-QR Code library failed to load after multiple attempts. Check CDN availability.", true);
+                    updateStatusUI('🚨', 'Initialization Failed', 'Scanner library could not load.', 'bg-red-100', 'text-red-700');
+                    return;
+                }
+                retryCount++;
+                log(`Attempt ${retryCount}: Library not yet available. Retrying in 100ms...`, true);
+                // Retrying aggressively at 100ms to catch the moment the script is executed
+                setTimeout(initializeScanner, 100); 
+                return;
+            }
+
+            // --- Library is loaded, proceed with setup ---
+
+            // Populate session options (This will now run reliably)
             sessionSelect.innerHTML = SESSIONS.map(s => 
                 `<option value="${s.value}">${s.label}</option>`
             ).join('');
@@ -257,29 +263,18 @@
                 window.html5QrcodeScanner.render(
                     onScanSuccess, 
                     (errorMessage) => { 
-                        // Optional: handle scan errors, often too verbose for UI
-                        // log(`Scan error: ${errorMessage}`); 
+                        // The library failed to start the camera.
+                        log(`Camera render error: ${errorMessage}`, true); 
+                        updateStatusUI('❌', 'Camera Failed to Start', 'Check system permissions and try refreshing the page.', 'bg-red-100', 'text-red-700');
                     }
                 );
                 log("QR Code Scanner started rendering.");
             }, 500); 
         }
 
-
-        /**
-         * Main function executed when the page DOM is ready.
-         * It initiates the dynamic loading of the QR library.
-         */
-        function initializeApp() {
-            // Load the external library first, then run startScanner as the success callback
-            const QR_LIBRARY_URL = "https://unpkg.com/html5-qrcode@2.3.9/html5-qrcode.min.js";
-            log("DOM ready. Initiating dynamic script load.");
-            loadScript(QR_LIBRARY_URL, startScanner);
-        }
-
         // --- START APPLICATION ---
-        // The main entry point now calls the loader function instead of checking definitions.
-        window.onload = initializeApp;
+        // The main entry point calls the polling function on DOM load.
+        window.onload = initializeScanner;
 
     </script>
 </body>
