@@ -1,0 +1,260 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Check-In Scanner (Sheet API)</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f7f9fc; }
+        /* Custom styles for scanner appearance */
+        #reader {
+            width: 100%;
+            max-width: 400px;
+            margin: auto;
+            border: 2px solid #3b82f6;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        #reader__dashboard_section_csr {
+            padding: 10px;
+            background-color: #f0f4ff;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <div id="app-container" class="max-w-xl mx-auto bg-white p-6 sm:p-8 rounded-xl shadow-2xl">
+        <h1 class="text-3xl font-extrabold text-center text-gray-800 mb-6">Event Check-In (Sheet Mode)</h1>
+        <p class="text-center text-gray-500 mb-8">Scan the QR code. Data is verified and recorded directly to your Google Sheet.</p>
+
+        <!-- CAMERA ACCESS WARNING AND SOLUTION -->
+        <div id="camera-warning-box" class="mb-6 p-4 border border-red-400 bg-red-50 rounded-lg shadow-md text-sm text-red-800">
+            <p class="font-bold mb-1 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-red-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
+                Camera Blocked by Host Site
+            </p>
+            <p>If the camera does not turn on, it is likely being blocked by the host website's security (iFrame restriction).</p>
+            <p class="mt-2 font-semibold">
+                To fix this, please open the app directly in a new window:
+                <!-- This JavaScript opens the current page URL in a new window, bypassing the iFrame restrictions -->
+                <a href="javascript:void(0)" onclick="window.open(window.location.href, '_blank')" class="text-red-600 underline hover:text-red-800 ml-1">Click here to open the Scanner in a new tab</a>
+            </p>
+        </div>
+        
+        <!-- Session Selector and Status -->
+        <div class="mb-6 flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0 sm:space-x-4">
+            <div class="flex-grow w-full sm:w-auto">
+                <label for="session-select" class="block text-sm font-medium text-gray-700 mb-1">Current Session</label>
+                <select id="session-select" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base appearance-none bg-white transition duration-150 ease-in-out">
+                    <!-- Options populated by JavaScript -->
+                </select>
+            </div>
+            <div id="auth-status" class="text-sm font-semibold text-gray-500 p-3 bg-gray-100 rounded-lg shadow-inner w-full sm:w-auto text-center">
+                API Ready
+            </div>
+        </div>
+        
+        <div id="scanner-area" class="flex flex-col items-center">
+            <!-- QR Code Reader will be mounted here -->
+            <div id="reader" class="mb-6"></div>
+
+            <!-- Feedback Display -->
+            <div id="status-container" class="p-5 w-full bg-gray-50 rounded-lg border border-gray-200 text-center transition-all duration-300">
+                <div id="status-icon" class="text-6xl mb-3">
+                    <!-- Icon placeholder -->
+                    <span role="img" aria-label="Scanning">🔄</span>
+                </div>
+                <p id="status-message" class="text-lg font-medium text-gray-600">Waiting to scan...</p>
+                <p id="participant-details" class="text-sm text-gray-400 mt-2"></p>
+            </div>
+        </div>
+        
+        <!-- Debug/Error Console -->
+        <div class="mt-8 pt-4 border-t border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-800 mb-2">Logs (For debugging)</h3>
+            <pre id="log-output" class="text-xs text-red-600 bg-red-50 p-3 rounded-lg overflow-x-auto h-24"></pre>
+        </div>
+
+    </div>
+    
+    <!-- Load html5-qrcode library for scanning -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.9/html5-qrcode.min.js"></script>
+
+    <!-- Changed from type="module" to standard script -->
+    <script> 
+        // 🚨 IMPORTANT: REPLACE THIS PLACEHOLDER WITH YOUR GOOGLE APPS SCRIPT WEB APP URL
+        const GAS_WEB_APP_URL = "https://script.google.com/a/macros/skhtst.edu.hk/s/AKfycbxxdWQotBCXW0wLAL_5Rkx7RlfgmHZbnpdubZXLP19w9SNJTUPa3zEtCNNDe9ljZo20/exec"; 
+        
+        // --- DOM Elements ---
+        const logOutput = document.getElementById('log-output');
+        const sessionSelect = document.getElementById('session-select');
+        const statusContainer = document.getElementById('status-container');
+        const statusIcon = document.getElementById('status-icon');
+        const statusMessage = document.getElementById('status-message');
+        const participantDetails = document.getElementById('participant-details');
+
+        // Predefined sessions (must match the format used in your Google Sheet's arrival times)
+        const SESSIONS = [
+            { value: '9:00 AM', label: 'Morning Session (9:00 AM)' },
+            { value: '10:00 AM', label: 'Mid-Morning Session (10:00 AM)' },
+            { value: '11:00 AM', label: 'Late-Morning Session (11:00 AM)' },
+            { value: '12:00 PM', label: 'Noon Session (12:00 PM)' },
+            { value: '1:00 PM', label: 'Early-Afternoon Session (1:00 PM)' },
+        ];
+
+        // --- UTILITY FUNCTIONS ---
+
+        function log(message, isError = false) {
+            const now = new Date().toLocaleTimeString();
+            const logEntry = `[${now}] ${message}\n`;
+            
+            // Limit log size for performance
+            let currentLog = logOutput.textContent;
+            const lines = currentLog.split('\n');
+            if (lines.length > 10) {
+                currentLog = lines.slice(-10).join('\n');
+            }
+            logOutput.textContent = currentLog + logEntry;
+            
+            if (isError) {
+                console.error(message);
+            } else {
+                console.log(message);
+            }
+        }
+        
+        /**
+         * Updates the UI to show the scanning result.
+         * @param {string} iconEmoji The emoji to display (e.g., '✅', '❌', '⚠️').
+         * @param {string} message The primary message.
+         * @param {string} details Secondary details about the participant.
+         * @param {string} bgColor Tailwind background class.
+         * @param {string} textColor Tailwind text color class.
+         */
+        function updateStatusUI(iconEmoji, message, details = '', bgColor = 'bg-gray-50', textColor = 'text-gray-600') {
+            statusContainer.className = `p-5 w-full rounded-lg border text-center transition-all duration-300 ${bgColor} ${textColor}`;
+            statusIcon.innerHTML = `<span role="img" aria-label="Status">${iconEmoji}</span>`;
+            statusMessage.textContent = message;
+            participantDetails.textContent = details;
+        }
+        
+        // --- CORE SCANNING LOGIC ---
+
+        /**
+         * Handles the successful scan of a QR code by calling the Apps Script Web App.
+         * @param {string} decodedText The text encoded in the QR code (participant email).
+         */
+        async function onScanSuccess(decodedText) {
+            // Stop scanning immediately to prevent rapid re-scans
+            window.html5QrcodeScanner.pause();
+            
+            const participantEmail = decodedText.trim().toLowerCase();
+            const currentSession = sessionSelect.value;
+            
+            updateStatusUI('🔍', 'Verifying Code with Google Sheet...', participantEmail, 'bg-yellow-50', 'text-yellow-700');
+            log(`QR Code Scanned: ${participantEmail}. Current Session: ${currentSession}`);
+            
+            try {
+                const response = await fetch(GAS_WEB_APP_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: participantEmail,
+                        session: currentSession
+                    })
+                });
+
+                if (!response.ok) {
+                     throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                // Process the result from the Apps Script API
+                switch (result.status) {
+                    case 'success':
+                        updateStatusUI('✅', 'CHECK-IN SUCCESSFUL', 
+                            `${result.name} is now checked in for the ${result.session} session.`, 
+                            'bg-green-100', 'text-green-700');
+                        break;
+                    
+                    case 'unverified':
+                        // WARNING 1: QR code not verified
+                        updateStatusUI('❌', 'QR Code Not Verified', 
+                            `Email: ${result.email} not found in participant list.`, 
+                            'bg-red-100', 'text-red-700');
+                        break;
+                        
+                    case 'wrong_session':
+                        // WARNING 2: Wrong time session
+                        updateStatusUI('⚠️', 'Wrong Time Session', 
+                            `${result.name} (Expected: ${result.expected}). Please check into the correct session.`, 
+                            'bg-yellow-100', 'text-orange-700');
+                        break;
+                        
+                    case 'already_checked':
+                        // Already checked in
+                        updateStatusUI('✅', 'ALREADY CHECKED IN', 
+                            `${result.name}. Check-in recorded at: ${result.checkInTime}`, 
+                            'bg-blue-100', 'text-blue-700');
+                        break;
+
+                    case 'error':
+                    default:
+                        updateStatusUI('🚨', 'API Error', 
+                            `Details: ${result.message || 'Unknown server error.'}`, 
+                            'bg-red-100', 'text-red-700');
+                        break;
+                }
+                log(`API Response: ${JSON.stringify(result)}`);
+
+            } catch (error) {
+                updateStatusUI('🚨', 'Network Error', 
+                    `Could not communicate with the sheet API. Check your URL and connection.`, 
+                    'bg-red-100', 'text-red-700');
+                log(`Fetch error: ${error.message}`, true);
+            } finally {
+                // Resume scanning after a brief delay for user feedback
+                setTimeout(() => window.html5QrcodeScanner.resume(), 3000);
+            }
+        }
+        
+        /**
+         * Initializes and starts the QR code scanner.
+         */
+        function initializeScanner() {
+            // Populate session options
+            sessionSelect.innerHTML = SESSIONS.map(s => 
+                `<option value="${s.value}">${s.label}</option>`
+            ).join('');
+
+            // Set initial status
+            updateStatusUI('🔄', 'Ready to Scan', 'Select the session above and point the camera at the QR code.', 'bg-gray-100', 'text-gray-600');
+
+            const config = { 
+                fps: 10, 
+                qrbox: { width: 250, height: 250 }, 
+                disableFlip: false 
+            };
+            
+            // The html5-qrcode library is loaded via script tag and uses the 'reader' div
+            window.html5QrcodeScanner = new Html5QrcodeScanner("reader", config, true);
+            
+            // html5QrcodeScanner.render is the main function to start scanning
+            window.html5QrcodeScanner.render(
+                onScanSuccess, 
+                (errorMessage) => { 
+                    // Optional: handle scan errors, often too verbose for UI
+                    // log(`Scan error: ${errorMessage}`); 
+                }
+            );
+
+            log("QR Code Scanner initialized and started.");
+        }
