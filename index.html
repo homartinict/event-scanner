@@ -77,8 +77,10 @@
     </div>
     
     <!-- Load html5-qrcode library for scanning (Static load) 
-         Changed to a stable version (2.3.8) hosted on cdnjs to fix the UNPKG 404 error. -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+         Using the standard /dist/ path for version 2.3.11 on UNPKG, which is generally reliable.
+         If this fails, use the root path: <script src="https://unpkg.com/html5-qrcode"></script>
+    -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
 
     <script> 
         // 🚨 IMPORTANT: REPLACE THIS PLACEHOLDER WITH YOUR GOOGLE APPS SCRIPT WEB APP URL
@@ -225,7 +227,7 @@
             // Check if the library is loaded. If not, wait and try again (Polling).
             if (typeof Html5QrcodeScanner === 'undefined') {
                 if (retryCount >= MAX_RETRIES) {
-                    log("FATAL: HTML5-QR Code library failed to load after multiple attempts. Check CDN availability.", true);
+                    log("FATAL: HTML5-QR Code library failed to load after multiple attempts. Check CDN availability or use the root UNPKG path.", true);
                     updateStatusUI('🚨', 'Initialization Failed', 'Scanner library could not load.', 'bg-red-100', 'text-red-700');
                     return;
                 }
@@ -264,7 +266,6 @@
                     onScanSuccess, 
                     (errorMessage) => { 
                         // The library failed to start the camera.
-                        // Log a warning, but don't stop the app completely as the user might grant permissions late
                         log(`Camera render error: ${errorMessage}`, true); 
                     }
                 );
