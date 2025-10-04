@@ -1,206 +1,280 @@
-<!-- QR Code Check-In Scanner -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Event Check-In Scanner</title>
+    <title>Event Check-In Scanner (Sheet API Vx)</title>
+    <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f7fafc; }
-        .scanner-container { max-width: 500px; margin: auto; padding: 20px; }
-        #reader { width: 100%; border-radius: 0.75rem; overflow: hidden; }
-        .error-message { color: #e53e3e; font-weight: 600; padding: 10px; border: 1px solid #fed7d7; background-color: #fff5f5; border-radius: 0.5rem; margin-top: 10px; }
-        .success-message { color: #2f855a; font-weight: 600; padding: 10px; border: 1px solid #c6f6d5; background-color: #f0fff4; border-radius: 0.5rem; margin-top: 10px; }
-        .info-message { color: #2c5282; font-weight: 600; padding: 10px; border: 1px solid #bee3f8; background-color: #ebf8ff; border-radius: 0.5rem; margin-top: 10px; }
+        body { font-family: 'Inter', sans-serif; background-color: #f7f9fc; }
+        /* Custom styles for scanner appearance */
+        #reader {
+            width: 100%;
+            max-width: 400px;
+            margin: auto;
+            border: 2px solid #3b82f6;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        #reader__dashboard_section_csr {
+            padding: 10px;
+            background-color: #f0f4ff;
+            border-top: 1px solid #ddd;
+        }
     </style>
 </head>
-<body>
+<body class="p-4 sm:p-8">
 
-<div class="scanner-container bg-white shadow-xl rounded-xl mt-8">
-    <h1 class="text-3xl font-bold text-center text-gray-800 mb-4">Event Check-In V5</h1>
-    <p class="text-sm text-center text-gray-500 mb-6">Scan QR code to check in participants.</p>
+    <div id="app-container" class="max-w-xl mx-auto bg-white p-6 sm:p-8 rounded-xl shadow-2xl">
+        <h1 class="text-3xl font-extrabold text-center text-gray-800 mb-6">Event Check-In (Sheet Mode)</h1>
+        <h1 class="text-3xl font-extrabold text-center text-gray-800 mb-6">Event Check-In (Sheet Mode vx)</h1>
+        <p class="text-center text-gray-500 mb-8">Scan the QR code. Data is verified and recorded directly to your Google Sheet.</p>
 
-    <!-- Session Selection -->
-    <div class="mb-6">
-        <label for="session-select" class="block text-sm font-medium text-gray-700 mb-2">Current Session:</label>
-        <select id="session-select" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out">
-            <option value="Morning Session">Morning Session</option>
-            <option value="Afternoon Session">Afternoon Session</option>
-        </select>
+        <!-- CAMERA ACCESS WARNING AND SOLUTION - Kept for reference -->
+        <div id="camera-warning-box" class="mb-6 p-4 border border-red-400 bg-red-50 rounded-lg shadow-md text-sm text-red-800">
+            <p class="font-bold mb-1 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-red-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
+                Camera Troubleshooting
+            </p>
+            <p>If the camera remains blocked on an iPad, please ensure you are using the **public GitHub Pages URL** (not an embedded link) and that you have granted Camera permission to Safari/Chrome in the iPad's system settings.</p>
+        </div>
+
+        <!-- Session Selector and Status -->
+        <div class="mb-6 flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0 sm:space-x-4">
+            <div class="flex-grow w-full sm:w-auto">
+                <label for="session-select" class="block text-sm font-medium text-gray-700 mb-1">Current Session</label>
+                <select id="session-select" class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 text-base appearance-none bg-white transition duration-150 ease-in-out">
+                    <!-- Options populated by JavaScript -->
+                </select>
+            </div>
+            <div id="auth-status" class="text-sm font-semibold text-gray-500 p-3 bg-gray-100 rounded-lg shadow-inner w-full sm:w-auto text-center">
+                API Ready
+            </div>
+        </div>
+
+        <div id="scanner-area" class="flex flex-col items-center">
+            <!-- QR Code Reader will be mounted here -->
+            <div id="reader" class="mb-6"></div>
+
+            <!-- Feedback Display -->
+            <div id="status-container" class="p-5 w-full bg-gray-50 rounded-lg border border-gray-200 text-center transition-all duration-300">
+                <div id="status-icon" class="text-6xl mb-3">
+                    <!-- Icon placeholder -->
+                    <span role="img" aria-label="Scanning">🔄</span>
+                </div>
+                <p id="status-message" class="text-lg font-medium text-gray-600">Waiting to scan...</p>
+                <p id="participant-details" class="text-sm text-gray-400 mt-2"></p>
+            </div>
+        </div>
+
+        <!-- Debug/Error Console -->
+        <div class="mt-8 pt-4 border-t border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-800 mb-2">Logs (For debugging)</h3>
+            <pre id="log-output" class="text-xs text-red-600 bg-red-50 p-3 rounded-lg overflow-x-auto h-24"></pre>
+        </div>
+
     </div>
 
-    <!-- QR Scanner Placeholder -->
-    <div id="reader"></div>
+    <!-- Load html5-qrcode library for scanning (Static load) 
+         Using the standard /dist/ path for version 2.3.11 on UNPKG, which is generally reliable.
+         If this fails, use the root path: <script src="https://unpkg.com/html5-qrcode"></script>
+    -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
 
-    <!-- Status Display -->
-    <div id="status-display" class="mt-4 p-4 rounded-lg text-center font-semibold transition duration-300 min-h-[50px] flex items-center justify-center bg-gray-100 text-gray-600">
-        Scanner initializing...
-    </div>
+    <script> 
+        // 🚨 IMPORTANT: REPLACE THIS PLACEHOLDER WITH YOUR GOOGLE APPS SCRIPT WEB APP URL
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxhWZWtIoJJRFdCM439zzjLXqjrfzk41C1ouWPZ2Wa0oXBHFtTyfDOHk0130Xv3X6lF/exec"; 
 
-</div>
+        // --- DOM Elements ---
+        const logOutput = document.getElementById('log-output');
+        const sessionSelect = document.getElementById('session-select');
+        const statusContainer = document.getElementById('status-container');
+        const statusIcon = document.getElementById('status-icon');
+        const statusMessage = document.getElementById('status-message');
+        const participantDetails = document.getElementById('participant-details');
 
-<!-- QR Code Library -->
-<script src="https://unpkg.com/html5-qrcode"></script>
+        // Predefined sessions (must match the format used in your Google Sheet's arrival times)
+        const SESSIONS = [
+            { value: 'Morning Session', label: 'Morning Session' },
+            { value: 'Afternoon Session', label: 'Afternoon Session' },
+        ];
 
-<script>
-    // 🚨 IMPORTANT: REPLACE THIS PLACEHOLDER WITH YOUR **LATEST, DEPLOYED** GOOGLE APPS SCRIPT WEB APP URL
-    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxhWZWtIoJJRFdCM439zzjLXqjrfzk41C1ouWPZ2Wa0oXBHFtTyfDOHk0130Xv3X6lF/exec"; 
+        // State for managing initialization retries
+        let retryCount = 0;
+        const MAX_RETRIES = 30; // 30 retries * 100ms = 3 seconds wait max
 
-    let scanner;
-    let scanTimeout;
-    const POLLING_INTERVAL = 100; // ms
-    const MAX_POLLING_TIME = 3000; // 3 seconds
+        // --- UTILITY FUNCTIONS ---
 
-    // --- UI/Status Functions ---
+        function log(message, isError = false) {
+            const now = new Date().toLocaleTimeString();
+            const logEntry = `[${now}] ${message}\n`;
 
-    function setStatus(message, type = 'info') {
-        const display = document.getElementById('status-display');
-        display.textContent = message;
-        display.className = 'mt-4 p-4 rounded-lg text-center font-semibold transition duration-300 min-h-[50px] flex items-center justify-center';
+            // Limit log size for performance
+            let currentLog = logOutput.textContent;
+            const lines = currentLog.split('\n');
+            if (lines.length > 10) {
+                currentLog = lines.slice(-10).join('\n');
+            }
+            logOutput.textContent = currentLog + logEntry;
 
-        if (type === 'success') {
-            display.classList.add('success-message');
-            display.classList.remove('error-message', 'info-message');
-        } else if (type === 'error') {
-            display.classList.add('error-message');
-            display.classList.remove('success-message', 'info-message');
-        } else {
-            display.classList.add('info-message');
-            display.classList.remove('success-message', 'error-message');
+            if (isError) {
+                console.error(message);
+            } else {
+                console.log(message);
+            }
         }
-    }
 
-    // --- Apps Script Communication ---
+        /**
+         * Updates the UI to show the scanning result.
+         */
+        function updateStatusUI(iconEmoji, message, details = '', bgColor = 'bg-gray-50', textColor = 'text-gray-600') {
+            statusContainer.className = `p-5 w-full rounded-lg border text-center transition-all duration-300 ${bgColor} ${textColor}`;
+            statusIcon.innerHTML = `<span role="img" aria-label="Status">${iconEmoji}</span>`;
+            statusMessage.textContent = message;
+            participantDetails.textContent = details;
+        }
 
-    async function sendDataToSheet(email, session) {
-        setStatus(`Sending data for ${email}...`, 'info');
-        
-        try {
-            const response = await fetch(GAS_WEB_APP_URL, {
-                method: 'POST',
-                mode: 'cors', // Essential for cross-origin requests
-                headers: {
-                    'Content-Type': 'text/plain', // Use text/plain to avoid preflight issues with Apps Script
-                },
-                body: JSON.stringify({ email, session }),
-            });
+        // --- CORE SCANNING LOGIC ---
 
-            // If fetch succeeds but the HTTP status is an error (e.g., 404, 500)
-            if (!response.ok) {
-                // Log the precise HTTP status failure
-                const errorBody = await response.text();
-                const errorMessage = `HTTP Error ${response.status}: ${response.statusText}. Response body: ${errorBody.substring(0, 100)}`;
-                setStatus(`Fetch failed: HTTP Error! Check Console for details.`, 'error');
-                console.error("Apps Script HTTP Response Failure:", errorMessage);
-                throw new Error(`HTTP Status ${response.status}`);
+        /**
+         * Handles the successful scan of a QR code by calling the Apps Script Web App.
+         */
+        async function onScanSuccess(decodedText) {
+            // Stop scanning immediately to prevent rapid re-scans
+            window.html5QrcodeScanner.pause();
+
+            const participantEmail = decodedText.trim().toLowerCase();
+            const currentSession = sessionSelect.value;
+
+            updateStatusUI('🔍', 'Verifying Code with Google Sheet...', participantEmail, 'bg-yellow-50', 'text-yellow-700');
+            log(`QR Code Scanned: ${participantEmail}. Current Session: ${currentSession}`);
+
+            try {
+                const response = await fetch(GAS_WEB_APP_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: participantEmail,
+                        session: currentSession
+                    })
+                });
+
+                if (!response.ok) {
+                     throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                // Process the result from the Apps Script API
+                switch (result.status) {
+                    case 'success':
+                        updateStatusUI('✅', 'CHECK-IN SUCCESSFUL', 
+                            `${result.name} is now checked in for the ${result.session} session.`, 
+                            'bg-green-100', 'text-green-700');
+                        break;
+
+                    case 'unverified':
+                        // WARNING 1: QR code not verified
+                        updateStatusUI('❌', 'QR Code Not Verified', 
+                            `Email: ${result.email} not found in participant list.`, 
+                            'bg-red-100', 'text-red-700');
+                        break;
+
+                    case 'wrong_session':
+                        // WARNING 2: Wrong time session
+                        updateStatusUI('⚠️', 'Wrong Time Session', 
+                            `${result.name} (Expected: ${result.expected}). Please check into the correct session.`, 
+                            'bg-yellow-100', 'text-orange-700');
+                        break;
+
+                    case 'already_checked':
+                        // Already checked in
+                        updateStatusUI('✅', 'ALREADY CHECKED IN', 
+                            `${result.name}. Check-in recorded at: ${result.checkInTime}`, 
+                            'bg-blue-100', 'text-blue-700');
+                        break;
+
+                    case 'error':
+                    default:
+                        updateStatusUI('🚨', 'API Error', 
+                            `Details: ${result.message || 'Unknown server error.'}`, 
+                            'bg-red-100', 'text-red-700');
+                        break;
+                }
+                log(`API Response: ${JSON.stringify(result)}`);
+
+            } catch (error) {
+                updateStatusUI('🚨', 'Network Error', 
+                    `Could not communicate with the sheet API. Check your URL and connection.`, 
+                    'bg-red-100', 'text-red-700');
+                log(`Fetch error: ${error.message}`, true);
+            } finally {
+                // Resume scanning after a brief delay for user feedback
+                setTimeout(() => window.html5QrcodeScanner.resume(), 3000);
+            }
+        }
+
+        /**
+         * Initializes and starts the QR code scanner with robust polling checks.
+         */
+        function initializeScanner() {
+            // Check if the library is loaded. If not, wait and try again (Polling).
+            if (typeof Html5QrcodeScanner === 'undefined') {
+                if (retryCount >= MAX_RETRIES) {
+                    log("FATAL: HTML5-QR Code library failed to load after multiple attempts. Check CDN availability or use the root UNPKG path.", true);
+                    updateStatusUI('🚨', 'Initialization Failed', 'Scanner library could not load.', 'bg-red-100', 'text-red-700');
+                    return;
+                }
+                retryCount++;
+                log(`Attempt ${retryCount}: Library not yet available. Retrying in 100ms...`);
+                // Retrying aggressively at 100ms to catch the moment the script is executed
+                setTimeout(initializeScanner, 100); 
+                return;
             }
 
-            const result = await response.json();
+            // --- Library is loaded, proceed with setup ---
 
-            // Process response from Google Apps Script
-            let message, type;
-            switch (result.status) {
-                case 'success':
-                    message = `✅ Success! ${result.name || result.email} checked into ${result.session}.`;
-                    type = 'success';
-                    break;
-                case 'wrong_session':
-                    message = `⚠️ Session Mismatch! ${result.name} checked in to ${result.session}. Expected: ${result.expected}. Sheet row highlighted yellow.`;
-                    type = 'info'; // Use info/warning color for expected mismatch
-                    break;
-                case 'already_checked':
-                    message = `❌ Already Checked In! ${result.name} at ${result.checkInTime}.`;
-                    type = 'error';
-                    break;
-                case 'unverified':
-                    message = `❌ Unverified Email: ${result.email}. Not in the list.`;
-                    type = 'error';
-                    break;
-                default:
-                    message = `🚨 Unknown Server Error: ${result.message || 'Check Apps Script logs.'}`;
-                    type = 'error';
-            }
-            setStatus(message, type);
+            // Populate session options (This will now run reliably)
+            sessionSelect.innerHTML = SESSIONS.map(s => 
+                `<option value="${s.value}">${s.label}</option>`
+            ).join('');
 
-        } catch (error) {
-            // This block handles network failures (like "Load Failed") or JSON parsing errors
-            setStatus(`Fetch error: Load Failed. Check Console!`, 'error');
-            // Log the critical network error details
-            console.error("CRITICAL NETWORK ERROR:", error);
-            console.error("ACTION REQUIRED: Re-check your Apps Script Deployment permissions (set to 'Anyone') and ensure the GAS_WEB_APP_URL is correct and ends in /exec.");
-        }
-    }
+            // Set initial status
+            updateStatusUI('🔄', 'Initializing Camera...', 'Please wait for camera access prompt.', 'bg-gray-100', 'text-gray-600');
 
-    // --- QR Scanner Logic ---
-
-    function onScanSuccess(decodedText, decodedResult) {
-        if (scanTimeout) {
-            clearTimeout(scanTimeout);
-        }
-        
-        // Stop the scanner momentarily to prevent rapid rescan
-        scanner.pause();
-
-        const selectedSession = document.getElementById('session-select').value;
-        
-        // Send data to Google Sheet
-        sendDataToSheet(decodedText, selectedSession);
-
-        // Resume scanning after 5 seconds to give user time to move QR code
-        scanTimeout = setTimeout(() => {
-            scanner.resume();
-            setStatus('Ready to scan next participant.', 'info');
-        }, 5000); 
-    }
-
-    function onScanFailure(error) {
-        // Handle scan failure, usually better to ignore and keep scanning
-    }
-
-    function startScanner() {
-        if (scanner) {
-            // Use environment camera (rear camera on mobile)
             const config = { 
                 fps: 10, 
-                qrbox: { width: 250, height: 250 },
-                aspectRatio: 1.0,
-                formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE]
+                qrbox: { width: 250, height: 250 }, 
+                // Setting facingMode to environment (rear camera) helps in mobile environments
+                facingMode: "environment" 
             };
 
-            scanner.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
-                .then(() => {
-                    setStatus('Scanner is running. Select the session and scan a code.');
-                })
-                .catch((err) => {
-                    setStatus(`Camera Blocked: ${err.message}. Please ensure the browser has camera permission.`, 'error');
-                    console.error("Camera Start Error:", err);
-                });
+            // The library is now guaranteed to be loaded
+            window.html5QrcodeScanner = new Html5QrcodeScanner("reader", config, true);
+
+            // CRITICAL IOS/IPADOS FIX: Use a mandatory 500ms delay before rendering 
+            // to allow the browser time to prepare the video element/permissions.
+            log("Library loaded. Starting camera initialization after 500ms delay...");
+            setTimeout(() => {
+                window.html5QrcodeScanner.render(
+                    onScanSuccess, 
+                    (errorMessage) => { 
+                        // The library failed to start the camera.
+                        log(`Camera render error: ${errorMessage}`, true); 
+                    }
+                );
+                log("QR Code Scanner started rendering.");
+            }, 500); 
         }
-    }
 
-    function initializeScanner() {
-        const readerId = "reader";
-        
-        // Polling loop to wait for Html5QrcodeScanner to load from CDN
-        let pollStartTime = Date.now();
-        const pollForScanner = setInterval(() => {
-            if (typeof Html5QrcodeScanner !== 'undefined') {
-                clearInterval(pollForScanner);
-                setStatus('Scanner module loaded. Initializing camera...');
-                scanner = new Html5QrcodeScanner(readerId, { fps: 10, qrbox: { width: 250, height: 250 } }, false);
-                startScanner();
-            } else if (Date.now() - pollStartTime > MAX_POLLING_TIME) {
-                clearInterval(pollForScanner);
-                setStatus('Library Load Timeout. Check CDN link in console.', 'error');
-                console.error("FATAL ERROR: html5-qrcode library failed to load from CDN. Check the network tab for 404/network errors.");
-            }
-        }, POLLING_INTERVAL);
-    }
+        // --- START APPLICATION ---
+        // The main entry point calls the polling function on DOM load.
+        window.onload = initializeScanner;
 
-    window.onload = initializeScanner;
-</script>
-
+    </script>
 </body>
 </html>
